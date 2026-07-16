@@ -1,4 +1,4 @@
 .venv
-.com_port
+.port
 *.log
 __pycache__

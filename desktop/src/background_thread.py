@@ -3,8 +3,8 @@ import io
 import threading
 from PIL import Image
 
-from .state import State
-from .windows import get_spotify_media, convert_thumbnail_to_bytes
+from src.state import State
+from src.windows import get_spotify_media, convert_thumbnail_to_bytes
 
 
 def init_background_thread(state: State):
