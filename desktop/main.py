@@ -2,9 +2,9 @@ import argparse
 import logging
 import os
 import sys
-from src.serial import select_last_used_port, update_port_list
-from src.background_thread import init_background_thread
-from src.tray_icon import init_tray_icon
+from src.serial import initialize_serial
+from src.background_thread import initialize_background_thread
+from src.tray_icon import initialize_tray_icon
 from src.state import State
 
 ROOT_DIR: str = os.path.dirname(os.path.dirname(__file__))
@@ -26,13 +26,12 @@ if __name__ == "__main__":
             *([logging.StreamHandler(sys.stdout)] if args.debug else []),
         ],
     )
+    logging.info("Started")
 
-    init_background_thread(state)
-    init_tray_icon(state)
-    select_last_used_port(state)
-    update_port_list(state)
+    initialize_background_thread(state)
+    initialize_tray_icon(state)
+    initialize_serial(state)
 
-    # start the app!
-    logging.info("================ Starting ================")
-    state.background_thread.start()
+    logging.info("Done initializing")
+
     state.tray_icon.run()

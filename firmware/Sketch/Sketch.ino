@@ -1,160 +1,117 @@
 #include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
 
+// LED panel configuration
 #define PANEL_WIDTH 64
 #define PANEL_HEIGHT 64
 #define CLKPHASE false
+#define BRIGHTNESS 32  // 0-255
 
-#define E_PIN 32
+// LED panel pins
+const HUB75_I2S_CFG::i2s_pins HUB75_PINMAP { 
+  R1_PIN_DEFAULT,   //  R1 -> 25
+  G1_PIN_DEFAULT,   //  G1 -> 26
+  B1_PIN_DEFAULT,   //  B1 -> 27
+  R2_PIN_DEFAULT,   //  R2 -> 14
+  G2_PIN_DEFAULT,   //  G2 -> 12
+  B2_PIN_DEFAULT,   //  B2 -> 13
+  A_PIN_DEFAULT,    //   A -> 23
+  B_PIN_DEFAULT,    //   B -> 19
+  C_PIN_DEFAULT,    //   C -> 5
+  D_PIN_DEFAULT,    //   D -> 17
+  32,               //   E -> 32
+  LAT_PIN_DEFAULT,  // LAT -> 4
+  OE_PIN_DEFAULT,   //  OE -> 15
+  CLK_PIN_DEFAULT   // CLK -> 16
+};
+
+// other pins
+#define ON_OFF_SWITCH_PIN 22
+#define BUILTIN_LED_PIN 2
+#define RELAY_PIN 21
+
+#define BAUD_RATE 115200
+
 
 MatrixPanel_I2S_DMA *dma_display = nullptr;
 
-uint16_t myBLACK, myWHITE, myRED, myGREEN, myBLUE;
 
-// Input a value 0 to 255 to get a color value.
-// The colours are a transition r - g - b - back to r.
-// From: https://gist.github.com/davidegironi/3144efdc6d67e5df55438cc3cba613c8
-uint16_t colorWheel(uint8_t pos) {
-  if(pos < 85) {
-    return dma_display->color565(pos * 3, 255 - pos * 3, 0);
-  } else if(pos < 170) {
-    pos -= 85;
-    return dma_display->color565(255 - pos * 3, 0, pos * 3);
-  } else {
-    pos -= 170;
-    return dma_display->color565(0, pos * 3, 255 - pos * 3);
+void drawTest() {
+  int x, w;
+  int h = PANEL_HEIGHT * 5 / 6;
+  uint16_t color;
+  uint8_t a;
+  for (int i = 0; i < 6; i++){
+    int x = PANEL_HEIGHT * i / 6;
+    int w = (PANEL_HEIGHT * (i+1) / 6) - x;
+    if (i == 0) color = dma_display->color565(0xff,0xff,0x00);
+    else if (i == 1) color = dma_display->color565(0x00,0xff,0xff);
+    else if (i == 2) color = dma_display->color565(0x00,0xff,0x00);
+    else if (i == 3) color = dma_display->color565(0xff,0x00,0xff);
+    else if (i == 4) color = dma_display->color565(0xff,0x00,0x00);
+    else color = dma_display->color565(0x00,0x00,0xff);
+    dma_display->fillRect(x, 0, w, h, color);
+    a = 0x31 * i;
+    color = dma_display->color565(a, a, a);
+    dma_display->fillRect(x, h, w, PANEL_HEIGHT - h, color);
   }
 }
-
-void drawText(int colorWheelOffset)
-{
-  
-  // draw text with a rotating colour
-  dma_display->setTextSize(1);     // size 1 == 8 pixels high
-  dma_display->setTextWrap(false); // Don't wrap at end of line - will do ourselves
-
-  dma_display->setCursor(5, 0);    // start at top left, with 8 pixel of spacing
-  uint8_t w = 0;
-  const char *str = "ESP32 DMA";
-  for (w=0; w<strlen(str); w++) {
-    dma_display->setTextColor(colorWheel((w*32)+colorWheelOffset));
-    dma_display->print(str[w]);
-  }
-
-  dma_display->println();
-  dma_display->print(" ");
-  for (w=9; w<18; w++) {
-    dma_display->setTextColor(colorWheel((w*32)+colorWheelOffset));
-    dma_display->print("*");
-  }
-  
-  dma_display->println();
-
-  dma_display->setTextColor(dma_display->color444(15,15,15));
-  dma_display->println("LED MATRIX!");
-
-  // print each letter with a fixed rainbow color
-  dma_display->setTextColor(dma_display->color444(0,8,15));
-  dma_display->print('3');
-  dma_display->setTextColor(dma_display->color444(15,4,0));
-  dma_display->print('2');
-  dma_display->setTextColor(dma_display->color444(15,15,0));
-  dma_display->print('x');
-  dma_display->setTextColor(dma_display->color444(8,15,0));
-  dma_display->print('6');
-  dma_display->setTextColor(dma_display->color444(8,0,15));
-  dma_display->print('4');
-
-  // Jump a half character
-  dma_display->setCursor(34, 24);
-  dma_display->setTextColor(dma_display->color444(0,15,15));
-  dma_display->print("*");
-  dma_display->setTextColor(dma_display->color444(15,0,0));
-  dma_display->print('R');
-  dma_display->setTextColor(dma_display->color444(0,15,0));
-  dma_display->print('G');
-  dma_display->setTextColor(dma_display->color444(0,0,15));
-  dma_display->print("B");
-  dma_display->setTextColor(dma_display->color444(15,0,8));
-  dma_display->println("*");
-
-}
-
 
 void setup() {
+  Serial.begin(BAUD_RATE);
 
-  // Module configuration
+  pinMode(ON_OFF_SWITCH_PIN, INPUT_PULLUP);
+
+  pinMode(RELAY_PIN, OUTPUT);
+  digitalWrite(RELAY_PIN, LOW); // start off
+
+  // panel config
   HUB75_I2S_CFG mxconfig(
-    PANEL_WIDTH, PANEL_HEIGHT, 1
+    PANEL_WIDTH, PANEL_HEIGHT, 1, HUB75_PINMAP
   );
-
-  mxconfig.gpio.e = E_PIN;
   mxconfig.clkphase = CLKPHASE;
 
-  // Display Setup
+  // start panel
   dma_display = new MatrixPanel_I2S_DMA(mxconfig);
   dma_display->begin();
-  dma_display->setBrightness8(90); //0-255
+  dma_display->setBrightness8(BRIGHTNESS);
   dma_display->clearScreen();
 
-  myBLACK = dma_display->color565(0, 0, 0);
-  myWHITE = dma_display->color565(255, 255, 255);
-  myRED = dma_display->color565(255, 0, 0);
-  myGREEN = dma_display->color565(0, 255, 0);
-  myBLUE = dma_display->color565(0, 0, 255);
-  
-
-  dma_display->fillScreen(myWHITE);
-  
-  // fix the screen with green
-  dma_display->fillRect(0, 0, dma_display->width(), dma_display->height(), dma_display->color444(0, 15, 0));
   delay(500);
-
-  // draw a box in yellow
-  dma_display->drawRect(0, 0, dma_display->width(), dma_display->height(), dma_display->color444(15, 15, 0));
-  delay(500);
-
-  // draw an 'X' in red
-  dma_display->drawLine(0, 0, dma_display->width()-1, dma_display->height()-1, dma_display->color444(15, 0, 0));
-  dma_display->drawLine(dma_display->width()-1, 0, 0, dma_display->height()-1, dma_display->color444(15, 0, 0));
-  delay(500);
-
-  // draw a blue circle
-  dma_display->drawCircle(10, 10, 10, dma_display->color444(0, 0, 15));
-  delay(500);
-
-  // fill a violet circle
-  dma_display->fillCircle(40, 21, 10, dma_display->color444(15, 0, 15));
-  delay(500);
-
-  // fill the screen with 'black'
-  dma_display->fillScreen(dma_display->color444(0, 0, 0));
-
-  //drawText(0);
-
 }
 
-uint8_t wheelval = 0;
+int last_state = -1;
+int count = 0;
 void loop() {
 
-    // animate by going through the colour wheel for the first two lines
-    drawText(wheelval);
-    wheelval +=1;
+  // read the on/off switch
+  int read = digitalRead(ON_OFF_SWITCH_PIN);
+  if (read == HIGH) {
+    digitalWrite(RELAY_PIN, HIGH);
+    if (last_state != HIGH) {
+      drawTest();
+      delay(50);
+    }
+  } else {
+    digitalWrite(RELAY_PIN, LOW);
+    if (last_state != LOW) {
+      dma_display->clearScreen();
+      delay(50);
+    }
+  }
+  last_state = read;
 
-    delay(20); 
-/*
-  drawText(0);
-  delay(2000);
-  dma_display->clearScreen();
-  dma_display->fillScreen(myBLACK);
-  delay(2000);
-  dma_display->fillScreen(myBLUE);
-  delay(2000);
-  dma_display->fillScreen(myRED);
-  delay(2000);
-  dma_display->fillScreen(myGREEN);
-  delay(2000);
-  dma_display->fillScreen(myWHITE);
-  dma_display->clearScreen();
-  */
-  
+  // serial read
+  char *buffer;
+  size_t buffer_len = Serial.readBytesUntil('\n', buffer, 1024))
+  if (buffer_len > 0) {
+    
+  }
+
+  // serial write
+  if (count % 300 == 0) {
+    Serial.println("hello from the ESP32");
+  }
+
+  count++;
+  delay(10);
 }

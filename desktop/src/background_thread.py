@@ -7,13 +7,14 @@ from src.state import State
 from src.windows import get_spotify_media, convert_thumbnail_to_bytes
 
 
-def init_background_thread(state: State):
+def initialize_background_thread(state: State):
     state.background_stop_event = threading.Event()
     state.background_thread = threading.Thread(
         target=_background_thread,
         args=[state],
         daemon=True,
     )
+    state.background_thread.start()
 
 
 def _background_thread(state: State):
