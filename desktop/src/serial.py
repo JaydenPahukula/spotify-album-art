@@ -4,14 +4,11 @@ import threading
 import time
 
 import serial.tools.list_ports
-from serial.tools.list_ports_common import ListPortInfo
 from serial.serialutil import SerialException
-
+from serial.tools.list_ports_common import ListPortInfo
 from src.state import State
 
-
 BAUD_RATE = 115200
-PREFIX = "JAYDEN"
 LAST_PORT_PATH: str = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".port")
 
 # flag to tell the listener thread when the serial connection is open
@@ -118,9 +115,20 @@ def _listener_thread(state: State):
 
 def _process_message(state: State, msg: str):
     logging.info("Yippee! Recieved message: " + msg)
-    pass
+
 
 def serial_send_test_msg(state: State):
     _send_data(state, "")
 
+
+def serial_send_image(state: State, data: bytes | None):
+    if data is None:
+        print("sending None")
+    else:
+        print(f"sending {len(data)} bytes")
+
+
 def _send_data(state: State, data: str):
+    conn = state.serial_connection
+    if conn.is_open:
+        conn.write(b"<HELLO>")

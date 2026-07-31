@@ -1,24 +1,24 @@
 import logging
 import os
+import threading
 
 import pystray
 from PIL import Image
 from serial.tools.list_ports_common import ListPortInfo
-
-from src.serial import get_port_list, update_selected_port
+from src.gui import gui_show_preview
+from src.serial import get_port_list, serial_send_test_msg, update_selected_port
 from src.state import State
-
 
 ICON_PATH: str = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "disk.png")
 
 
-def initialize_tray_icon(state: State):
+def init_tray_icon(state: State):
     state.tray_icon = pystray.Icon(
         "SpotifyAlbumArt",
         Image.open(ICON_PATH),
         "Spotify Album Art",
         pystray.Menu(
-            pystray.MenuItem("Button", _handle_test_button),
+            pystray.MenuItem("Button", lambda: _handle_test_button(state)),
             pystray.MenuItem("Show Image", lambda: _handle_show_image(state)),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem(
@@ -30,6 +30,12 @@ def initialize_tray_icon(state: State):
             pystray.MenuItem("Exit", lambda: _handle_quit(state)),
         ),
     )
+    # start the tray icon in a background thread
+    thread = threading.Thread(
+        target=state.tray_icon.run,
+        daemon=True,
+    )
+    thread.start()
 
 
 def _rebuild_port_menu(state: State):
@@ -78,15 +84,16 @@ def _handle_disconnect(state: State):
     state.tray_icon.update_menu()
 
 
-def _handle_test_button():
+def _handle_test_button(state: State):
     logging.info("TEST")
+    serial_send_test_msg(state)
 
 
 def _handle_show_image(state: State):
     if state.image is None:
         pystray.Icon.notify(state.tray_icon, "No image found :(")
     else:
-        state.image.show()
+        gui_show_preview(state)
 
 
 def _handle_quit(state: State):
@@ -97,3 +104,4 @@ def _handle_quit(state: State):
     state.background_thread.join()
 
     state.tray_icon.stop()
+    state.gui_root.destroy()

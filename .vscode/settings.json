@@ -2,4 +2,9 @@
     "python.analysis.extraPaths": [
         "${workspaceFolder}/desktop"
     ],
+    "ruff.lint.ignore": [
+        "LOG015",
+        "BLE001",
+        "S110"
+    ],
 }
