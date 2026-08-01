@@ -1,44 +1,37 @@
 import logging
 import os
-import threading
 
 import pystray
 from PIL import Image
 from serial.tools.list_ports_common import ListPortInfo
-from src.gui import gui_show_preview
-from src.serial import get_port_list, serial_send_test_msg, update_selected_port
-from src.state import State
+from src.serial import Msg, get_port_list, serial_send, update_selected_port
+from src.state import exitApp, state
 
 ICON_PATH: str = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "disk.png")
 
 
-def init_tray_icon(state: State):
+def init_tray_icon():
     state.tray_icon = pystray.Icon(
         "SpotifyAlbumArt",
         Image.open(ICON_PATH),
         "Spotify Album Art",
         pystray.Menu(
-            pystray.MenuItem("Button", lambda: _handle_test_button(state)),
-            pystray.MenuItem("Show Image", lambda: _handle_show_image(state)),
+            pystray.MenuItem("Button", _handle_test_button),
+            pystray.MenuItem("Show Image", _handle_show_image),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem(
                 "Select USB Port",
-                pystray.Menu(lambda: _rebuild_port_menu(state)),
+                pystray.Menu(_rebuild_port_menu),
                 enabled=lambda _: not state.serial_establishing_connection,
             ),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem("Exit", lambda: _handle_quit(state)),
+            pystray.MenuItem("Exit", exitApp),
         ),
     )
-    # start the tray icon in a background thread
-    thread = threading.Thread(
-        target=state.tray_icon.run,
-        daemon=True,
-    )
-    thread.start()
+    state.tray_icon.run_detached()
 
 
-def _rebuild_port_menu(state: State):
+def _rebuild_port_menu():
     ports = get_port_list()
     menu_items = []
     if len(ports) == 0:
@@ -48,60 +41,49 @@ def _rebuild_port_menu(state: State):
             menu_items.append(
                 pystray.MenuItem(
                     f"{port.device} - {port.description}",
-                    _mk_handle_select_port(state, port),
-                    checked=_mk_is_port_checked(state, port),
+                    _mk_handle_select_port(port),
+                    checked=_mk_is_port_checked(port),
                     radio=True,
                 )
             )
     menu_items.append(pystray.Menu.SEPARATOR)
-    menu_items.append(pystray.MenuItem("Refresh", lambda: _handle_refresh_port_menu(state)))
+    menu_items.append(pystray.MenuItem("Refresh List", state.tray_icon.update_menu))
     if state.serial_connection.is_open:
-        menu_items.append(pystray.MenuItem("Disconnect", lambda: _handle_disconnect(state)))
+        menu_items.append(pystray.MenuItem("Disconnect", _handle_disconnect))
     return menu_items
 
 
-def _mk_handle_select_port(state: State, port: ListPortInfo):
-    return lambda icon, item: _handle_select_port(icon, state, port)
+def _mk_handle_select_port(port: ListPortInfo):
+    return lambda icon, item: _handle_select_port(icon, port)
 
 
-def _handle_select_port(icon, state: State, port: ListPortInfo):
+def _handle_select_port(icon, port: ListPortInfo):
     logging.info("User selected port: " + port.device)
-    update_selected_port(state, port.device)
+    update_selected_port(port.device)
     icon.update_menu()
 
 
-def _mk_is_port_checked(state: State, port: ListPortInfo):
+def _mk_is_port_checked(port: ListPortInfo):
     return lambda item: state.serial_connection.port == port.device and state.serial_connection.is_open
 
 
-def _handle_refresh_port_menu(state: State):
-    state.tray_icon.update_menu()
-
-
-def _handle_disconnect(state: State):
+def _handle_disconnect():
     logging.info("User selected disconnect")
-    update_selected_port(state, None)
+    update_selected_port(None)
     state.tray_icon.update_menu()
 
 
-def _handle_test_button(state: State):
+def _handle_test_button():
     logging.info("TEST")
-    serial_send_test_msg(state)
+    serial_send(Msg.Test)
 
 
-def _handle_show_image(state: State):
+def _handle_show_image():
     if state.image is None:
-        pystray.Icon.notify(state.tray_icon, "No image found :(")
+        state.tray_icon.notify("Could not find a media thumbnail", " ")
     else:
-        gui_show_preview(state)
-
-
-def _handle_quit(state: State):
-    logging.info("Exiting")
-
-    # stop the background thread
-    state.background_stop_event.set()
-    state.background_thread.join()
-
-    state.tray_icon.stop()
-    state.gui_root.destroy()
+        preview_image = state.image.resize(
+            (state.image.width * 16, state.image.height * 16),
+            Image.Resampling.NEAREST,
+        )
+        preview_image.show()

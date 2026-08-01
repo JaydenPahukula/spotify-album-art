@@ -1,6 +1,6 @@
+import logging
 import threading
 from dataclasses import dataclass
-from tkinter import Tk
 
 import pystray
 import serial
@@ -9,10 +9,6 @@ from PIL import ImageFile
 
 @dataclass
 class State:
-    """
-    Universal app state
-    """
-
     debug: bool = False
 
     serial_establishing_connection: bool = False
@@ -27,5 +23,16 @@ class State:
 
     last_media_key: str | None = None
 
-    gui_root: Tk = None
     gui_icon_photo: ImageFile.ImageFile | None = None
+
+    exited: bool = False
+
+
+state = State()
+"""Universal app state"""
+
+
+def exitApp(signum=None, frame=None):
+    logging.info("Exiting")
+    state.tray_icon.stop()
+    state.exited = True

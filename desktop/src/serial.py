@@ -1,3 +1,4 @@
+import enum
 import logging
 import os
 import threading
@@ -6,7 +7,7 @@ import time
 import serial.tools.list_ports
 from serial.serialutil import SerialException
 from serial.tools.list_ports_common import ListPortInfo
-from src.state import State
+from src.state import state
 
 BAUD_RATE = 115200
 LAST_PORT_PATH: str = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".port")
@@ -15,19 +16,24 @@ LAST_PORT_PATH: str = os.path.join(os.path.dirname(os.path.dirname(__file__)), "
 _connection_open_flag = threading.Event()
 
 
-def initialize_serial(state: State):
+class Msg(enum.Enum):
+    Test = 0
+    Image = 1
+    NoImage = 2
+
+
+def initialize_serial():
     state.serial_connection.baudrate = BAUD_RATE
     # start the background listener thread
     _connection_open_flag.clear()
-    thread = threading.Thread(target=_listener_thread, args=[state], daemon=True)
-    thread.start()
+    threading.Thread(target=_listener_thread, daemon=True).start()
     # check for a last used port
     try:
         with open(LAST_PORT_PATH, "r") as file:
             port = file.readline().strip()
         if len(port) > 0:
             logging.info("Selected previously used port: " + port)
-            _switch_port(state, port)
+            _switch_port(port)
     except FileNotFoundError:
         pass  # .port file does not exist
 
@@ -36,19 +42,18 @@ def get_port_list() -> list[ListPortInfo]:
     return sorted(serial.tools.list_ports.comports(), key=lambda port: port.device)
 
 
-def update_selected_port(state: State, port: str | None) -> bool:
+def update_selected_port(port: str | None) -> bool:
     if port == state.serial_connection.port and state.serial_connection.is_open:
         return
-    _switch_port(state, port, True)
+    _switch_port(port, True)
 
 
-def _switch_port(state: State, new_port: str | None, notify_on_fail: bool = False):
+def _switch_port(new_port: str | None, notify_on_fail: bool = False):
     # switch ports in the background
-    thread = threading.Thread(target=_switch_port_thread, args=[state, new_port, notify_on_fail], daemon=True)
-    thread.start()
+    threading.Thread(target=_switch_port_thread, args=[new_port, notify_on_fail], daemon=True).start()
 
 
-def _switch_port_thread(state: State, new_port: str | None, notify_on_fail: bool):
+def _switch_port_thread(new_port: str | None, notify_on_fail: bool):
     if state.serial_establishing_connection:
         return
     state.serial_establishing_connection = True
@@ -92,7 +97,7 @@ def _save_last_port(port: str | None):
         file.write(data)
 
 
-def _listener_thread(state: State):
+def _listener_thread():
     while True:
         # wait until serial connection is open
         _connection_open_flag.wait()
@@ -105,7 +110,7 @@ def _listener_thread(state: State):
             data = conn.readline().decode()
             if len(data) == 0:
                 continue
-            _process_message(state, data)
+            _process_message(data)
         except (serial.SerialException, OSError):
             _connection_open_flag.clear()
             conn.close()
@@ -113,22 +118,23 @@ def _listener_thread(state: State):
             logging.info("Lost serial connection on " + conn.port)
 
 
-def _process_message(state: State, msg: str):
+def _process_message(msg: str):
     logging.info("Yippee! Recieved message: " + msg)
 
 
-def serial_send_test_msg(state: State):
-    _send_data(state, "")
-
-
-def serial_send_image(state: State, data: bytes | None):
-    if data is None:
-        print("sending None")
+def serial_send(msg: Msg, data: bytes | None = None):
+    # TODO
+    if msg == Msg.Test:
+        pass
+    elif msg == Msg.Image:
+        pass
+    elif msg == Msg.NoImage:
+        pass
     else:
-        print(f"sending {len(data)} bytes")
+        pass
 
 
-def _send_data(state: State, data: str):
+def _send(data: str):
     conn = state.serial_connection
     if conn.is_open:
         conn.write(b"<HELLO>")
